@@ -34,7 +34,6 @@ import com.google.common.base.Objects;
 import com.google.common.math.IntMath;
 import com.google.common.primitives.Ints;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-
 import java.io.Serializable;
 import java.math.RoundingMode;
 import java.util.AbstractList;
@@ -50,7 +49,7 @@ import java.util.ListIterator;
 import java.util.NoSuchElementException;
 import java.util.RandomAccess;
 import java.util.concurrent.CopyOnWriteArrayList;
-
+import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
 /**
@@ -86,7 +85,7 @@ public final class Lists {
    */
   @GwtCompatible(serializable = true)
   public static <E> ArrayList<E> newArrayList() {
-    return new ArrayList<E>();
+    return new ArrayList<>();
   }
 
   /**
@@ -106,13 +105,14 @@ public final class Lists {
    * calling {@link Collections#addAll}. This method is not actually very useful
    * and will likely be deprecated in the future.
    */
+  @SafeVarargs
   @CanIgnoreReturnValue // TODO(kak): Remove this
   @GwtCompatible(serializable = true)
   public static <E> ArrayList<E> newArrayList(E... elements) {
     checkNotNull(elements); // for GWT
     // Avoid integer overflow when a large array is passed in
     int capacity = computeArrayListCapacity(elements.length);
-    ArrayList<E> list = new ArrayList<E>(capacity);
+    ArrayList<E> list = new ArrayList<>(capacity);
     Collections.addAll(list, elements);
     return list;
   }
@@ -146,7 +146,7 @@ public final class Lists {
     checkNotNull(elements); // for GWT
     // Let ArrayList's sizing logic work, if possible
     return (elements instanceof Collection)
-        ? new ArrayList<E>(Collections2.cast(elements))
+        ? new ArrayList<>(Collections2.cast(elements))
         : newArrayList(elements.iterator());
   }
 
@@ -187,7 +187,7 @@ public final class Lists {
   @GwtCompatible(serializable = true)
   public static <E> ArrayList<E> newArrayListWithCapacity(int initialArraySize) {
     checkNonnegative(initialArraySize, "initialArraySize"); // for GWT.
-    return new ArrayList<E>(initialArraySize);
+    return new ArrayList<>(initialArraySize);
   }
 
   /**
@@ -208,7 +208,7 @@ public final class Lists {
    */
   @GwtCompatible(serializable = true)
   public static <E> ArrayList<E> newArrayListWithExpectedSize(int estimatedSize) {
-    return new ArrayList<E>(computeArrayListCapacity(estimatedSize));
+    return new ArrayList<>(computeArrayListCapacity(estimatedSize));
   }
 
   // LinkedList
@@ -232,7 +232,7 @@ public final class Lists {
    */
   @GwtCompatible(serializable = true)
   public static <E> LinkedList<E> newLinkedList() {
-    return new LinkedList<E>();
+    return new LinkedList<>();
   }
 
   /**
@@ -273,7 +273,7 @@ public final class Lists {
    */
   @GwtIncompatible // CopyOnWriteArrayList
   public static <E> CopyOnWriteArrayList<E> newCopyOnWriteArrayList() {
-    return new CopyOnWriteArrayList<E>();
+    return new CopyOnWriteArrayList<>();
   }
 
   /**
@@ -290,7 +290,7 @@ public final class Lists {
     // quadratic cost of adding them to the COWAL directly.
     Collection<? extends E> elementsCollection =
         (elements instanceof Collection) ? Collections2.cast(elements) : newArrayList(elements);
-    return new CopyOnWriteArrayList<E>(elementsCollection);
+    return new CopyOnWriteArrayList<>(elementsCollection);
   }
 
   /**
@@ -310,7 +310,7 @@ public final class Lists {
    * @return an unmodifiable list containing the specified elements
    */
   public static <E> List<E> asList(@Nullable E first, E[] rest) {
-    return new OnePlusArrayList<E>(first, rest);
+    return new OnePlusArrayList<>(first, rest);
   }
 
   /** @see Lists#asList(Object, Object[]) */
@@ -357,7 +357,7 @@ public final class Lists {
    * @return an unmodifiable list containing the specified elements
    */
   public static <E> List<E> asList(@Nullable E first, @Nullable E second, E[] rest) {
-    return new TwoPlusArrayList<E>(first, second, rest);
+    return new TwoPlusArrayList<>(first, second, rest);
   }
 
   /** @see Lists#asList(Object, Object, Object[]) */
@@ -513,6 +513,7 @@ public final class Lists {
    *     {@code lists}, or any element of a provided list is null
    * @since 19.0
    */
+  @SafeVarargs
   public static <B> List<List<B>> cartesianProduct(List<? extends B>... lists) {
     return cartesianProduct(Arrays.asList(lists));
   }
@@ -549,12 +550,16 @@ public final class Lists {
    * copy the list using {@link ImmutableList#copyOf(Collection)} (for example),
    * then serialize the copy. Other methods similar to this do not implement
    * serialization at all for this reason.
+   *
+   * <p><b>Java 8 users:</b> many use cases for this method are better addressed
+   *  by {@link java.util.stream.Stream#map}. This method is not being
+   * deprecated, but we gently encourage you to migrate to streams.
    */
   public static <F, T> List<T> transform(
       List<F> fromList, Function<? super F, ? extends T> function) {
     return (fromList instanceof RandomAccess)
-        ? new TransformingRandomAccessList<F, T>(fromList, function)
-        : new TransformingSequentialList<F, T>(fromList, function);
+        ? new TransformingRandomAccessList<>(fromList, function)
+        : new TransformingSequentialList<>(fromList, function);
   }
 
   /**
@@ -594,6 +599,12 @@ public final class Lists {
           return function.apply(from);
         }
       };
+    }
+
+    @Override
+    public boolean removeIf(Predicate<? super T> filter) {
+      checkNotNull(filter);
+      return fromList.removeIf(element -> filter.test(function.apply(element)));
     }
 
     private static final long serialVersionUID = 0;
@@ -648,6 +659,12 @@ public final class Lists {
     }
 
     @Override
+    public boolean removeIf(Predicate<? super T> filter) {
+      checkNotNull(filter);
+      return fromList.removeIf(element -> filter.test(function.apply(element)));
+    }
+
+    @Override
     public T remove(int index) {
       return function.apply(fromList.remove(index));
     }
@@ -682,8 +699,8 @@ public final class Lists {
     checkNotNull(list);
     checkArgument(size > 0);
     return (list instanceof RandomAccess)
-        ? new RandomAccessPartition<T>(list, size)
-        : new Partition<T>(list, size);
+        ? new RandomAccessPartition<>(list, size)
+        : new Partition<>(list, size);
   }
 
   private static class Partition<T> extends AbstractList<List<T>> {
@@ -726,7 +743,6 @@ public final class Lists {
    *
    * @since 7.0
    */
-  @Beta
   public static ImmutableList<Character> charactersOf(String string) {
     return new StringAsImmutableList(checkNotNull(string));
   }
@@ -826,9 +842,9 @@ public final class Lists {
     } else if (list instanceof ReverseList) {
       return ((ReverseList<T>) list).getForwardList();
     } else if (list instanceof RandomAccess) {
-      return new RandomAccessReverseList<T>(list);
+      return new RandomAccessReverseList<>(list);
     } else {
-      return new ReverseList<T>(list);
+      return new ReverseList<>(list);
     }
   }
 
@@ -1105,7 +1121,7 @@ public final class Lists {
    * Returns an implementation of {@link List#listIterator(int)}.
    */
   static <E> ListIterator<E> listIteratorImpl(List<E> list, int index) {
-    return new AbstractListWrapper<E>(list).listIterator(index);
+    return new AbstractListWrapper<>(list).listIterator(index);
   }
 
   /**

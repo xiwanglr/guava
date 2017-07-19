@@ -42,9 +42,6 @@ import com.google.common.collect.testing.features.Feature;
 import com.google.common.collect.testing.features.ListFeature;
 import com.google.common.collect.testing.features.MapFeature;
 import com.google.common.testing.SerializableTester;
-
-import junit.framework.TestSuite;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -57,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
+import junit.framework.TestSuite;
 
 /**
  * Creates, based on your criteria, a JUnit test suite that exhaustively tests
@@ -87,6 +85,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
         MultimapContainsEntryTester.class,
         MultimapEntriesTester.class,
         MultimapEqualsTester.class,
+        MultimapForEachTester.class,
         MultimapGetTester.class,
         MultimapKeySetTester.class,
         MultimapKeysTester.class,
@@ -264,7 +263,7 @@ public class MultimapTestSuiteBuilder<K, V, M extends Multimap<K, V>>
     return derivedFeatures;
   }
 
-  private static final Multimap<Feature<?>, Feature<?>> GET_FEATURE_MAP =
+  private static final ImmutableMultimap<Feature<?>, Feature<?>> GET_FEATURE_MAP =
       ImmutableMultimap.<Feature<?>, Feature<?>>builder()
           .put(
               MapFeature.FAILS_FAST_ON_CONCURRENT_MODIFICATION,

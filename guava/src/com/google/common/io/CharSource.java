@@ -24,17 +24,21 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Streams;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-
+import com.google.errorprone.annotations.MustBeClosed;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.io.StringReader;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.charset.Charset;
 import java.util.Iterator;
 import java.util.List;
-
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
 
 /**
@@ -88,28 +92,67 @@ public abstract class CharSource {
   }
 
   /**
-   * Opens a new {@link Reader} for reading from this source. This method should return a new,
-   * independent reader each time it is called.
+   * Opens a new {@link Reader} for reading from this source. This method returns a new, independent
+   * reader each time it is called.
    *
    * <p>The caller is responsible for ensuring that the returned reader is closed.
    *
-   * @throws IOException if an I/O error occurs in the process of opening the reader
+   * @throws IOException if an I/O error occurs while opening the reader
    */
   public abstract Reader openStream() throws IOException;
 
   /**
-   * Opens a new {@link BufferedReader} for reading from this source. This method should return a
-   * new, independent reader each time it is called.
+   * Opens a new {@link BufferedReader} for reading from this source. This method returns a new,
+   * independent reader each time it is called.
    *
    * <p>The caller is responsible for ensuring that the returned reader is closed.
    *
-   * @throws IOException if an I/O error occurs in the process of opening the reader
+   * @throws IOException if an I/O error occurs while of opening the reader
    */
   public BufferedReader openBufferedStream() throws IOException {
     Reader reader = openStream();
     return (reader instanceof BufferedReader)
         ? (BufferedReader) reader
         : new BufferedReader(reader);
+  }
+
+  /**
+   * Opens a new {@link Stream} for reading text one line at a time from this source. This method
+   * returns a new, independent stream each time it is called.
+   *
+   * <p>The returned stream is lazy and only reads from the source in the terminal operation. If an
+   * I/O error occurs while the stream is reading from the source or when the stream is closed, an
+   * {@link UncheckedIOException} is thrown.
+   *
+   * <p>Like {@link BufferedReader#readLine()}, this method considers a line to be a sequence of
+   * text that is terminated by (but does not include) one of {@code \r\n}, {@code \r} or
+   * {@code \n}. If the source's content does not end in a line termination sequence, it is treated
+   * as if it does.
+   *
+   * <p>The caller is responsible for ensuring that the returned stream is closed. For example:
+   *
+   * <pre>{@code
+   * try (Stream<String> lines = source.lines()) {
+   *   lines.map(...)
+   *      .filter(...)
+   *      .forEach(...);
+   * }
+   * }</pre>
+   *
+   * @throws IOException if an I/O error occurs while opening the stream
+   * @since 22.0
+   */
+  @Beta
+  @MustBeClosed
+  public Stream<String> lines() throws IOException {
+    BufferedReader reader = openBufferedStream();
+    return reader.lines().onClose(() -> {
+      try {
+        reader.close();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    });
   }
 
   /**
@@ -147,7 +190,7 @@ public abstract class CharSource {
    * <p>In either case, for mutable sources such as files, a subsequent read may return a different
    * number of chars if the contents are changed.
    *
-   * @throws IOException if an I/O error occurs in the process of reading the length of this source
+   * @throws IOException if an I/O error occurs while reading the length of this source
    * @since 19.0
    */
   @Beta
@@ -182,8 +225,8 @@ public abstract class CharSource {
    * Does not close {@code appendable} if it is {@code Closeable}.
    *
    * @return the number of characters copied
-   * @throws IOException if an I/O error occurs in the process of reading from this source or
-   *     writing to {@code appendable}
+   * @throws IOException if an I/O error occurs while reading from this source or writing to
+   *     {@code appendable}
    */
   @CanIgnoreReturnValue
   public long copyTo(Appendable appendable) throws IOException {
@@ -204,8 +247,8 @@ public abstract class CharSource {
    * Copies the contents of this source to the given sink.
    *
    * @return the number of characters copied
-   * @throws IOException if an I/O error occurs in the process of reading from this source or
-   *     writing to {@code sink}
+   * @throws IOException if an I/O error occurs while reading from this source or writing to
+   *     {@code sink}
    */
   @CanIgnoreReturnValue
   public long copyTo(CharSink sink) throws IOException {
@@ -226,7 +269,7 @@ public abstract class CharSource {
   /**
    * Reads the contents of this source as a string.
    *
-   * @throws IOException if an I/O error occurs in the process of reading from this source
+   * @throws IOException if an I/O error occurs while reading from this source
    */
   public String read() throws IOException {
     Closer closer = Closer.create();
@@ -241,13 +284,14 @@ public abstract class CharSource {
   }
 
   /**
-   * Reads the first link of this source as a string. Returns {@code null} if this source is empty.
+   * Reads the first line of this source as a string. Returns {@code null} if this source is empty.
    *
-   * <p>Like {@link BufferedReader}, this method breaks lines on any of {@code \n}, {@code \r} or
-   * {@code \r\n}, does not include the line separator in the returned line and does not consider
-   * there to be an extra empty line at the end if the content is terminated with a line separator.
+   * <p>Like {@link BufferedReader#readLine()}, this method considers a line to be a sequence of
+   * text that is terminated by (but does not include) one of {@code \r\n}, {@code \r} or
+   * {@code \n}. If the source's content does not end in a line termination sequence, it is treated
+   * as if it does.
    *
-   * @throws IOException if an I/O error occurs in the process of reading from this source
+   * @throws IOException if an I/O error occurs while reading from this source
    */
   @Nullable
   public String readFirstLine() throws IOException {
@@ -266,11 +310,12 @@ public abstract class CharSource {
    * Reads all the lines of this source as a list of strings. The returned list will be empty if
    * this source is empty.
    *
-   * <p>Like {@link BufferedReader}, this method breaks lines on any of {@code \n}, {@code \r} or
-   * {@code \r\n}, does not include the line separator in the returned lines and does not consider
-   * there to be an extra empty line at the end if the content is terminated with a line separator.
+   * <p>Like {@link BufferedReader#readLine()}, this method considers a line to be a sequence of
+   * text that is terminated by (but does not include) one of {@code \r\n}, {@code \r} or
+   * {@code \n}. If the source's content does not end in a line termination sequence, it is treated
+   * as if it does.
    *
-   * @throws IOException if an I/O error occurs in the process of reading from this source
+   * @throws IOException if an I/O error occurs while reading from this source
    */
   public ImmutableList<String> readLines() throws IOException {
     Closer closer = Closer.create();
@@ -294,12 +339,12 @@ public abstract class CharSource {
    * {@link LineProcessor processor}. Stops when all lines have been processed or the processor
    * returns {@code false} and returns the result produced by the processor.
    *
-   * <p>Like {@link BufferedReader}, this method breaks lines on any of {@code \n}, {@code \r} or
-   * {@code \r\n}, does not include the line separator in the lines passed to the {@code processor}
-   * and does not consider there to be an extra empty line at the end if the content is terminated
-   * with a line separator.
+   * <p>Like {@link BufferedReader#readLine()}, this method considers a line to be a sequence of
+   * text that is terminated by (but does not include) one of {@code \r\n}, {@code \r} or
+   * {@code \n}. If the source's content does not end in a line termination sequence, it is treated
+   * as if it does.
    *
-   * @throws IOException if an I/O error occurs in the process of reading from this source or if
+   * @throws IOException if an I/O error occurs while reading from this source or if
    *     {@code processor} throws an {@code IOException}
    * @since 16.0
    */
@@ -320,9 +365,32 @@ public abstract class CharSource {
   }
 
   /**
-   * Returns whether the source has zero chars. The default implementation returns true if
-   * {@link #lengthIfKnown} returns zero, falling back to opening a stream and checking for EOF if
-   * the length is not known.
+   * Reads all lines of text from this source, running the given {@code action} for each line as
+   * it is read.
+   *
+   * <p>Like {@link BufferedReader#readLine()}, this method considers a line to be a sequence of
+   * text that is terminated by (but does not include) one of {@code \r\n}, {@code \r} or
+   * {@code \n}. If the source's content does not end in a line termination sequence, it is treated
+   * as if it does.
+   *
+   * @throws IOException if an I/O error occurs while reading from this source or if
+   *     {@code action} throws an {@code UncheckedIOException}
+   * @since 22.0
+   */
+  @Beta
+  public void forEachLine(Consumer<? super String> action) throws IOException {
+    try (Stream<String> lines = lines()) {
+      // The lines should be ordered regardless in most cases, but use forEachOrdered to be sure
+      lines.forEachOrdered(action);
+    } catch (UncheckedIOException e) {
+      throw e.getCause();
+    }
+  }
+
+  /**
+   * Returns whether the source has zero chars. The default implementation first checks
+   * {@link #lengthIfKnown}, returning true if it's known to be zero and false if it's known to be
+   * non-zero. If the length is not known, it falls back to opening a stream and checking for EOF.
    *
    * <p>Note that, in cases where {@code lengthIfKnown} returns zero, it is <i>possible</i> that
    * chars are actually available for reading. This means that a source may return {@code true} from
@@ -333,8 +401,8 @@ public abstract class CharSource {
    */
   public boolean isEmpty() throws IOException {
     Optional<Long> lengthIfKnown = lengthIfKnown();
-    if (lengthIfKnown.isPresent() && lengthIfKnown.get() == 0L) {
-      return true;
+    if (lengthIfKnown.isPresent()) {
+      return lengthIfKnown.get() == 0L;
     }
     Closer closer = Closer.create();
     try {
@@ -408,7 +476,9 @@ public abstract class CharSource {
    * @since 15.0 (since 14.0 as {@code CharStreams.asCharSource(String)})
    */
   public static CharSource wrap(CharSequence charSequence) {
-    return new CharSequenceCharSource(charSequence);
+    return charSequence instanceof String
+        ? new StringCharSource((String) charSequence)
+        : new CharSequenceCharSource(charSequence);
   }
 
   /**
@@ -454,7 +524,7 @@ public abstract class CharSource {
 
     private static final Splitter LINE_SPLITTER = Splitter.onPattern("\r\n|\n|\r");
 
-    private final CharSequence seq;
+    protected final CharSequence seq;
 
     protected CharSequenceCharSource(CharSequence seq) {
       this.seq = checkNotNull(seq);
@@ -486,47 +556,48 @@ public abstract class CharSource {
     }
 
     /**
-     * Returns an iterable over the lines in the string. If the string ends in a newline, a final
-     * empty string is not included to match the behavior of BufferedReader/LineReader.readLine().
+     * Returns an iterator over the lines in the string. If the string ends in a newline, a final
+     * empty string is not included, to match the behavior of BufferedReader/LineReader.readLine().
      */
-    private Iterable<String> lines() {
-      return new Iterable<String>() {
-        @Override
-        public Iterator<String> iterator() {
-          return new AbstractIterator<String>() {
-            Iterator<String> lines = LINE_SPLITTER.split(seq).iterator();
+    private Iterator<String> linesIterator() {
+      return new AbstractIterator<String>() {
+        Iterator<String> lines = LINE_SPLITTER.split(seq).iterator();
 
-            @Override
-            protected String computeNext() {
-              if (lines.hasNext()) {
-                String next = lines.next();
-                // skip last line if it's empty
-                if (lines.hasNext() || !next.isEmpty()) {
-                  return next;
-                }
-              }
-              return endOfData();
+        @Override
+        protected String computeNext() {
+          if (lines.hasNext()) {
+            String next = lines.next();
+            // skip last line if it's empty
+            if (lines.hasNext() || !next.isEmpty()) {
+              return next;
             }
-          };
+          }
+          return endOfData();
         }
       };
     }
 
     @Override
+    public Stream<String> lines() {
+      return Streams.stream(linesIterator());
+    }
+
+    @Override
     public String readFirstLine() {
-      Iterator<String> lines = lines().iterator();
+      Iterator<String> lines = linesIterator();
       return lines.hasNext() ? lines.next() : null;
     }
 
     @Override
     public ImmutableList<String> readLines() {
-      return ImmutableList.copyOf(lines());
+      return ImmutableList.copyOf(linesIterator());
     }
 
     @Override
     public <T> T readLines(LineProcessor<T> processor) throws IOException {
-      for (String line : lines()) {
-        if (!processor.processLine(line)) {
+      Iterator<String> lines = linesIterator();
+      while (lines.hasNext()) {
+        if (!processor.processLine(lines.next())) {
           break;
         }
       }
@@ -539,7 +610,54 @@ public abstract class CharSource {
     }
   }
 
-  private static final class EmptyCharSource extends CharSequenceCharSource {
+  /**
+   * Subclass specialized for string instances.
+   *
+   * <p>Since Strings are immutable and built into the jdk we can optimize some operations
+   *
+   * <ul>
+   *   <li>use {@link StringReader} instead of {@link CharSequenceReader}. It is faster since it can
+   *       use {@link String#getChars(int, int, char[], int)} instead of copying characters one by
+   *       one with {@link CharSequence#charAt(int)}.
+   *   <li>use {@link Appendable#append(CharSequence)} in {@link #copyTo(Appendable)} and {@link
+   *       #copyTo(CharSink)}. We know this is correct since strings are immutable and so the length
+   *       can't change, and it is faster because many writers and appendables are optimized for
+   *       appending string instances.
+   * </ul>
+   */
+  private static class StringCharSource extends CharSequenceCharSource {
+    protected StringCharSource(String seq) {
+      super(seq);
+    }
+
+    @Override
+    public Reader openStream() {
+      return new StringReader((String) seq);
+    }
+
+    @Override
+    public long copyTo(Appendable appendable) throws IOException {
+      appendable.append(seq);
+      return seq.length();
+    }
+
+    @Override
+    public long copyTo(CharSink sink) throws IOException {
+      checkNotNull(sink);
+      Closer closer = Closer.create();
+      try {
+        Writer writer = closer.register(sink.openStream());
+        writer.write((String) seq);
+        return seq.length();
+      } catch (Throwable e) {
+        throw closer.rethrow(e);
+      } finally {
+        closer.close();
+      }
+    }
+  }
+
+  private static final class EmptyCharSource extends StringCharSource {
 
     private static final EmptyCharSource INSTANCE = new EmptyCharSource();
 

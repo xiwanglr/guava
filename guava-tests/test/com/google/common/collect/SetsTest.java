@@ -31,6 +31,7 @@ import static java.util.Collections.singleton;
 
 import com.google.common.annotations.GwtCompatible;
 import com.google.common.annotations.GwtIncompatible;
+import com.google.common.base.Predicate;
 import com.google.common.collect.testing.AnEnum;
 import com.google.common.collect.testing.IteratorTester;
 import com.google.common.collect.testing.MinimalIterable;
@@ -45,11 +46,6 @@ import com.google.common.collect.testing.features.SetFeature;
 import com.google.common.testing.EqualsTester;
 import com.google.common.testing.NullPointerTester;
 import com.google.common.testing.SerializableTester;
-
-import junit.framework.Test;
-import junit.framework.TestCase;
-import junit.framework.TestSuite;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -76,8 +72,11 @@ import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.concurrent.CopyOnWriteArraySet;
-
+import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import junit.framework.Test;
+import junit.framework.TestCase;
+import junit.framework.TestSuite;
 
 /**
  * Unit test for {@code Sets}.
@@ -310,6 +309,17 @@ public class SetsTest extends TestCase {
       units.add(SomeEnum.C);
       fail("ImmutableEnumSet should throw an exception on add()");
     } catch (UnsupportedOperationException expected) {}
+  }
+
+  public void testToImmutableEnumSet() {
+    Set<SomeEnum> units = Stream.of(SomeEnum.D, SomeEnum.B).collect(Sets.toImmutableEnumSet());
+
+    assertThat(units).containsExactly(SomeEnum.B, SomeEnum.D).inOrder();
+  }
+
+  public void testToImmutableEnumSetEmpty() {
+    Set<SomeEnum> units = Stream.<SomeEnum>empty().collect(Sets.toImmutableEnumSet());
+    assertThat(units).isEmpty();
   }
 
   @GwtIncompatible // SerializableTester
@@ -974,6 +984,33 @@ public class SetsTest extends TestCase {
 
   private static void checkHashCode(Set<?> set) {
     assertEquals(Sets.newHashSet(set).hashCode(), set.hashCode());
+  }
+
+  public void testCombinations() {
+    ImmutableList<Set<Integer>> sampleSets =
+        ImmutableList.<Set<Integer>>of(
+            ImmutableSet.<Integer>of(),
+            ImmutableSet.of(1, 2),
+            ImmutableSet.of(1, 2, 3, 4, 5, 6, 7, 8, 9, 10));
+    for (Set<Integer> sampleSet : sampleSets) {
+      for (int k = 0; k <= sampleSet.size(); k++) {
+        final int size = k;
+        Set<Set<Integer>> expected =
+            Sets.filter(
+                Sets.powerSet(sampleSet),
+                new Predicate<Set<Integer>>() {
+
+                  @Override
+                  public boolean apply(Set<Integer> input) {
+                    return input.size() == size;
+                  }
+                });
+        assertThat(Sets.combinations(sampleSet, k))
+            .named("Sets.combinations(%s, %s)", sampleSet, k)
+            .containsExactlyElementsIn(expected)
+            .inOrder();
+      }
+    }
   }
 
   private static <E> Set<E> set(E... elements) {

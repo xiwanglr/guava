@@ -23,7 +23,6 @@ import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListenableFutureTask;
-
 import java.io.Serializable;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -35,14 +34,23 @@ import java.util.concurrent.Executor;
  * <p>Most implementations will only need to implement {@link #load}. Other methods may be
  * overridden as desired.
  *
- * <p>Usage example: <pre>   {@code
+ * <p>Usage example:
  *
- *   CacheLoader<Key, Graph> loader = new CacheLoader<Key, Graph>() {
- *     public Graph load(Key key) throws AnyException {
- *       return createExpensiveGraph(key);
- *     }
- *   };
- *   LoadingCache<Key, Graph> cache = CacheBuilder.newBuilder().build(loader);}</pre>
+ * <pre>{@code
+ * CacheLoader<Key, Graph> loader = new CacheLoader<Key, Graph>() {
+ *   public Graph load(Key key) throws AnyException {
+ *     return createExpensiveGraph(key);
+ *   }
+ * };
+ * LoadingCache<Key, Graph> cache = CacheBuilder.newBuilder().build(loader);
+ * }</pre>
+ *
+ * <p>Since this example doesn't support reloading or bulk loading, it can also be specified much
+ * more simply:
+ *
+ * <pre>{@code
+ * CacheLoader<Key, Graph> loader = CacheLoader.from(key -> createExpensiveGraph(key));
+ * }</pre>
  *
  * @author Charles Fry
  * @since 10.0
@@ -103,9 +111,9 @@ public abstract class CacheLoader<K, V> {
    * contains extra keys not present in {@code keys} then all returned entries will be cached, but
    * only the entries for {@code keys} will be returned from {@code getAll}.
    *
-   * <p>This method should be overriden when bulk retrieval is significantly more efficient than
+   * <p>This method should be overridden when bulk retrieval is significantly more efficient than
    * many individual lookups. Note that {@link LoadingCache#getAll} will defer to individual calls
-   * to {@link LoadingCache#get} if this method is not overriden.
+   * to {@link LoadingCache#get} if this method is not overridden.
    *
    * @param keys the unique, non-null keys whose values should be loaded
    * @return a map from each key in {@code keys} to the value associated with that key; <b>may not
@@ -123,9 +131,8 @@ public abstract class CacheLoader<K, V> {
   }
 
   /**
-   * Returns a cache loader based on an <i>existing</i> function instance. Note that there's no need
-   * to create a <i>new</i> function just to pass it in here; just subclass {@code CacheLoader} and
-   * implement {@link #load load} instead.
+   * Returns a cache loader that uses {@code function} to load keys, without supporting either
+   * reloading or bulk loading. This allows creating a cache loader using a lambda expression.
    *
    * @param function the function to be used for loading values; must never return {@code null}
    * @return a cache loader that loads values by passing each key to {@code function}

@@ -84,6 +84,11 @@ public void testCartesianProduct_zeroary() throws Exception {
   testCase.testCartesianProduct_zeroary();
 }
 
+public void testCombinations() throws Exception {
+  com.google.common.collect.SetsTest testCase = new com.google.common.collect.SetsTest();
+  testCase.testCombinations();
+}
+
 public void testComplementOfEmptyEnumSetWithoutType() throws Exception {
   com.google.common.collect.SetsTest testCase = new com.google.common.collect.SetsTest();
   testCase.testComplementOfEmptyEnumSetWithoutType();
@@ -322,5 +327,15 @@ public void testPowerSetShowOff() throws Exception {
 public void testPowerSetSize() throws Exception {
   com.google.common.collect.SetsTest testCase = new com.google.common.collect.SetsTest();
   testCase.testPowerSetSize();
+}
+
+public void testToImmutableEnumSet() throws Exception {
+  com.google.common.collect.SetsTest testCase = new com.google.common.collect.SetsTest();
+  testCase.testToImmutableEnumSet();
+}
+
+public void testToImmutableEnumSetEmpty() throws Exception {
+  com.google.common.collect.SetsTest testCase = new com.google.common.collect.SetsTest();
+  testCase.testToImmutableEnumSetEmpty();
 }
 }

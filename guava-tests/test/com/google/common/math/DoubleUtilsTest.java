@@ -20,25 +20,22 @@ import static com.google.common.math.MathTesting.ALL_BIGINTEGER_CANDIDATES;
 import static com.google.common.math.MathTesting.FINITE_DOUBLE_CANDIDATES;
 import static com.google.common.math.MathTesting.POSITIVE_FINITE_DOUBLE_CANDIDATES;
 
-import junit.framework.TestCase;
-
-import sun.misc.FpUtils;
-
 import java.math.BigInteger;
+import junit.framework.TestCase;
 
 /**
  * Tests for {@link DoubleUtils}.
- * 
+ *
  * @author Louis Wasserman
  */
 public class DoubleUtilsTest extends TestCase {
   @AndroidIncompatible // no FpUtils
   public void testNextDown() {
     for (double d : FINITE_DOUBLE_CANDIDATES) {
-      assertEquals(FpUtils.nextDown(d), DoubleUtils.nextDown(d));
+      assertEquals(Math.nextDown(d), DoubleUtils.nextDown(d));
     }
   }
-  
+
   @AndroidIncompatible // TODO(cpovirk): File bug for BigDecimal.doubleValue().
   public void testBigToDouble() {
     for (BigInteger b : ALL_BIGINTEGER_CANDIDATES) {
@@ -65,6 +62,10 @@ public class DoubleUtilsTest extends TestCase {
       fail("Expected IllegalArgumentException from ensureNonNegative(Double.NaN)");
     } catch (IllegalArgumentException expected) {
     }
+  }
+
+  public void testOneBits() {
+    assertEquals(DoubleUtils.ONE_BITS, Double.doubleToRawLongBits(1.0));
   }
 
   private static void failFormat(String template, Object... args) {

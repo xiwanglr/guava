@@ -16,14 +16,16 @@ package com.google.common.io;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 
+import com.google.common.annotations.Beta;
 import com.google.common.annotations.GwtIncompatible;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
-
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.Charset;
+import java.util.Iterator;
+import java.util.stream.Stream;
 
 /**
  * A destination to which characters can be written, such as a text file. Unlike a {@link Writer}, a
@@ -56,12 +58,12 @@ public abstract class CharSink {
   protected CharSink() {}
 
   /**
-   * Opens a new {@link Writer} for writing to this sink. This method should return a new,
-   * independent writer each time it is called.
+   * Opens a new {@link Writer} for writing to this sink. This method returns a new, independent
+   * writer each time it is called.
    *
    * <p>The caller is responsible for ensuring that the returned writer is closed.
    *
-   * @throws IOException if an I/O error occurs in the process of opening the writer
+   * @throws IOException if an I/O error occurs while opening the writer
    */
   public abstract Writer openStream() throws IOException;
 
@@ -69,11 +71,11 @@ public abstract class CharSink {
    * Opens a new buffered {@link Writer} for writing to this sink. The returned stream is not
    * required to be a {@link BufferedWriter} in order to allow implementations to simply delegate to
    * {@link #openStream()} when the stream returned by that method does not benefit from additional
-   * buffering. This method should return a new, independent writer each time it is called.
+   * buffering. This method returns a new, independent writer each time it is called.
    *
    * <p>The caller is responsible for ensuring that the returned writer is closed.
    *
-   * @throws IOException if an I/O error occurs in the process of opening the writer
+   * @throws IOException if an I/O error occurs while opening the writer
    * @since 15.0 (in 14.0 with return type {@link BufferedWriter})
    */
   public Writer openBufferedStream() throws IOException {
@@ -86,7 +88,7 @@ public abstract class CharSink {
   /**
    * Writes the given character sequence to this sink.
    *
-   * @throws IOException if an I/O error in the process of writing to this sink
+   * @throws IOException if an I/O error while writing to this sink
    */
   public void write(CharSequence charSequence) throws IOException {
     checkNotNull(charSequence);
@@ -108,7 +110,7 @@ public abstract class CharSink {
    * the operating system's default line separator. This method is equivalent to
    * {@code writeLines(lines, System.getProperty("line.separator"))}.
    *
-   * @throws IOException if an I/O error occurs in the process of writing to this sink
+   * @throws IOException if an I/O error occurs while writing to this sink
    */
   public void writeLines(Iterable<? extends CharSequence> lines) throws IOException {
     writeLines(lines, System.getProperty("line.separator"));
@@ -118,24 +120,47 @@ public abstract class CharSink {
    * Writes the given lines of text to this sink with each line (including the last) terminated with
    * the given line separator.
    *
-   * @throws IOException if an I/O error occurs in the process of writing to this sink
+   * @throws IOException if an I/O error occurs while writing to this sink
    */
   public void writeLines(Iterable<? extends CharSequence> lines, String lineSeparator)
       throws IOException {
-    checkNotNull(lines);
+    writeLines(lines.iterator(), lineSeparator);
+  }
+
+  /**
+   * Writes the given lines of text to this sink with each line (including the last) terminated with
+   * the operating system's default line separator. This method is equivalent to {@code
+   * writeLines(lines, System.getProperty("line.separator"))}.
+   *
+   * @throws IOException if an I/O error occurs while writing to this sink
+   * @since 22.0
+   */
+  @Beta
+  public void writeLines(Stream<? extends CharSequence> lines) throws IOException {
+    writeLines(lines, System.getProperty("line.separator"));
+  }
+
+  /**
+   * Writes the given lines of text to this sink with each line (including the last) terminated with
+   * the given line separator.
+   *
+   * @throws IOException if an I/O error occurs while writing to this sink
+   * @since 22.0
+   */
+  @Beta
+  public void writeLines(Stream<? extends CharSequence> lines, String lineSeparator)
+      throws IOException {
+    writeLines(lines.iterator(), lineSeparator);
+  }
+
+  private void writeLines(Iterator<? extends CharSequence> lines, String lineSeparator)
+      throws IOException {
     checkNotNull(lineSeparator);
 
-    Closer closer = Closer.create();
-    try {
-      Writer out = closer.register(openBufferedStream());
-      for (CharSequence line : lines) {
-        out.append(line).append(lineSeparator);
+    try (Writer out = openBufferedStream()) {
+      while (lines.hasNext()) {
+        out.append(lines.next()).append(lineSeparator);
       }
-      out.flush(); // https://code.google.com/p/guava-libraries/issues/detail?id=1330
-    } catch (Throwable e) {
-      throw closer.rethrow(e);
-    } finally {
-      closer.close();
     }
   }
 
@@ -144,8 +169,8 @@ public abstract class CharSink {
    * Does not close {@code readable} if it is {@code Closeable}.
    *
    * @return the number of characters written
-   * @throws IOException if an I/O error occurs in the process of reading from {@code readable} or
-   *     writing to this sink
+   * @throws IOException if an I/O error occurs while reading from {@code readable} or writing to
+   *     this sink
    */
   @CanIgnoreReturnValue
   public long writeFrom(Readable readable) throws IOException {
